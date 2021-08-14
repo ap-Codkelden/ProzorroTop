@@ -69,8 +69,7 @@ for m in top_tenders:
       f'— {m.entity_name.strip()} (<a href="https://clarity-project.info/edr/'\
       f'{int(m.entity_id)}">{m.entity_id}</a>)\n'\
       f'<a href="https://prozorro.gov.ua/tender/{m.uaid}">'\
-      f'{m.title[:120] + "…"}</a>\nПроцедура: <em>{m.procedure_name}</em>\n'\
-      f'Статус: <em>{m.status_name}</em>'
+      f'{m.title[:120] + "…"}</a>\nПроцедура: <em>{m.procedure_name}</em>'
     if first_msg:
         msg = f'За {datetime.fromisoformat(m.date).strftime(LOC_DATE)} '\
               'було створено такий топ закупівель:\n\n' + msg
@@ -98,5 +97,3 @@ for msg in message_box:
         logging.info("Portion successfully sent")
     time.sleep(.5)
     # pass
-
-# print(message_box)
