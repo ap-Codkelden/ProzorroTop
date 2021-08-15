@@ -55,8 +55,8 @@ if not top_tenders:
     logging.warning("Empty TOP")
     sys.exit(1)
 
-top_tenders = top_tenders[:5]
-print(len(top_tenders))
+# top_tenders = top_tenders[:5]
+# print(len(top_tenders))
 
 bot = telebot.TeleBot(TOKEN)
 message_box = []
@@ -84,7 +84,7 @@ for m in top_tenders:
         msg_portion.append(msg)
 
 message_box.append("\n\n".join(msg_portion))
-print(len(message_box[0]))
+# print(len(message_box[0]))
 
 for msg in message_box:
     try:
