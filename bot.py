@@ -11,6 +11,8 @@ import sys
 from config import TOKEN, CHANNEL
 from datetime import datetime
 from utils import Tender
+from pathlib import Path
+
 
 try:
     locale.setlocale(locale.LC_TIME, "uk_UA.UTF-8")
@@ -62,6 +64,13 @@ bot = telebot.TeleBot(TOKEN)
 message_box = []
 msg_portion = []
 first_msg = True
+current_dt = sent_dt = None
+current_dt_file = Path("./current_dt.txt")
+
+if current_dt_file.is_file():
+    sent_dt = current_dt_file.read_text()
+else:
+    logging.warning("Does not Exist")
 
 for m in top_tenders:
     # print(m)
@@ -71,7 +80,11 @@ for m in top_tenders:
       f'<a href="https://prozorro.gov.ua/tender/{m.uaid}">'\
       f'{m.title[:120] + "…"}</a>\nПроцедура: <em>{m.procedure_name}</em>'
     if first_msg:
-        msg = f'За {datetime.fromisoformat(m.date).strftime(LOC_DATE)} '\
+        current_dt = m.date
+        if current_dt == sent_dt:
+            logging.error("Already sent")
+            sys.exit(1)
+        msg = f'За {datetime.fromisoformat(current_dt).strftime(LOC_DATE)} '\
               'було створено такий топ закупівель:\n\n' + msg
         first_msg = False
     cur_portion = "\n\n".join(msg_portion)
@@ -82,18 +95,16 @@ for m in top_tenders:
         msg_portion = [msg]
     else:
         msg_portion.append(msg)
-
 message_box.append("\n\n".join(msg_portion))
-# print(len(message_box[0]))
 
-for msg in message_box:
-    try:
+try:
+    for msg in message_box:
         bot.send_message(CHANNEL,
                          msg, disable_web_page_preview=True,
                          parse_mode='HTML')
-    except:
-        logging.error("Portion NOT sent")
-    else:
-        logging.info("Portion successfully sent")
-    time.sleep(.5)
-    # pass
+        time.sleep(.5)
+except:
+    logging.error("Portion NOT sent")
+else:
+    logging.info("Portion successfully sent")
+    current_dt_file.write_text(f"{current_dt}")
