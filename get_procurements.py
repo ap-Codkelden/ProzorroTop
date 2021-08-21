@@ -19,7 +19,7 @@ import ujson
 from utils import Tender
 requests.models.json = ujson
 
-SLEEP = 0.27
+SLEEP = 0.38
 API_URL = "https://api.openprocurement.org"
 API_PATH = "/api/2.5/tenders"
 HEADERS = {
