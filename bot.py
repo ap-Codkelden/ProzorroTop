@@ -6,12 +6,14 @@ import locale
 import logging
 import pickle
 import telebot
-import time
 import sys
-from config import TOKEN, CHANNEL
-from datetime import datetime
-from utils import Tender
+import time
 from pathlib import Path
+from datetime import datetime
+from typing import Optional
+
+from config import TOKEN, CHANNEL
+from utils import Tender
 
 
 try:
@@ -24,6 +26,7 @@ except locale.Error:
 
 BULLET = "\U0001F518"
 NOBR = "\U000000A0"
+BOX = "\U0001F4E6"
 
 
 def beautify_number(n, suffix='грн.'):
@@ -50,18 +53,15 @@ try:
         top_tenders = pickle.load(f)
 except (AttributeError, FileNotFoundError):
     logging.critical("Can't load top")
-    # raise
     sys.exit(1)
 
 if not top_tenders:
     logging.warning("Empty TOP")
     sys.exit(1)
 
-# top_tenders = top_tenders[:5]
-# print(len(top_tenders))
 
 bot = telebot.TeleBot(TOKEN)
-message_box = []
+message_box: list[Optional[str]] = []
 msg_portion = []
 first_msg = True
 current_dt = sent_dt = None
@@ -73,7 +73,6 @@ else:
     logging.warning("Does not Exist")
 
 for m in top_tenders:
-    # print(m)
     msg = f'{BULLET}{NOBR}<b>{beautify_number(m.price_uah)}</b>{NOBR}'\
       f'— {m.entity_name.strip()} (<a href="https://clarity-project.info/edr/'\
       f'{int(m.entity_id)}">{m.entity_id}</a>)\n'\
@@ -83,13 +82,14 @@ for m in top_tenders:
         current_dt = m.date
         if current_dt == sent_dt:
             logging.error("Already sent")
-            sys.exit(1)
+            # !!
+            # sys.exit(1)
         msg = f'За {datetime.fromisoformat(current_dt).strftime(LOC_DATE)} '\
               'було створено такий топ закупівель:\n\n' + msg
         first_msg = False
     cur_portion = "\n\n".join(msg_portion)
     len_cur_portion = len(cur_portion)
-    print(len_cur_portion)
+    # print(len_cur_portion)
     if len_cur_portion + len(msg) + 2 > 4096:
         message_box.append(cur_portion)
         msg_portion = [msg]
@@ -97,14 +97,25 @@ for m in top_tenders:
         msg_portion.append(msg)
 message_box.append("\n\n".join(msg_portion))
 
+# Add link to archive
+archive_advertise = f'\n\n<a href="https://bit.ly/mnywt4">{BOX} Архів останніх закупівель</a>'
+if message_box:
+    last_msg_lehgth = len(message_box[-1])
+    if last_msg_lehgth < 4026:
+        new_msg = message_box[-1] + archive_advertise
+        message_box[-1] = new_msg
+    else:
+        message_box.append(archive_advertise)
+
 try:
     for msg in message_box:
         bot.send_message(CHANNEL,
                          msg, disable_web_page_preview=True,
                          parse_mode='HTML')
-        time.sleep(.5)
-except:
-    logging.error("Portion NOT sent")
+        time.sleep(.64)
+except Exception:
+    logging.error("Portion does not sent")
+    raise
 else:
     logging.info("Portion successfully sent")
     current_dt_file.write_text(f"{current_dt}")

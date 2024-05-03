@@ -9,7 +9,7 @@ import json
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",}
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
 
 logging.basicConfig(
     filename='download.log',
@@ -46,21 +46,26 @@ def read_exchange():
     try:
         u = get_exchange("USD", START_DATE)
         e = get_exchange("EUR", START_DATE)
-        if any([x is None for x in (u, e)]):
+        r = get_exchange("RUB", START_DATE)
+        g = get_exchange("GBP", START_DATE)
+        if any([x is None for x in (u, e, r, g)]):
             raise ValueError
     except:
-        raise
         with open("exchange.json") as f:
             k = json.load(f)
-        logging.warning('Cannot fetch actual exchange rate, restored.')
+        logging.warning('CURRENCY: Cannot fetch actual exchange rate, restored.')
+        # raise
     else:
         k["EUR"] = e
         k["USD"] = u
+        k['RUB'] = r
+        k['GBP'] = g
         with open("exchange.json", "w") as f:
             json.dump(k, f)
         logging.info('Exchange rates saved.')
     finally:
         logging.info('Exchange rate updated.')
     return k
+
 
 EXCHANGE = read_exchange()
