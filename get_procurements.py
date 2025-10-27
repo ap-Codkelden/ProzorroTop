@@ -11,15 +11,20 @@
 import logging
 import pickle
 import sqlite3
+import duckdb
 import time
-from datetime import datetime, timedelta
+from datetime import (
+    datetime,
+    timedelta)
 from typing import Optional
+from tqdm import tqdm
 
 import requests
 import ujson
 import urllib3
 
 from currency import EXCHANGE
+from classifiers import PROCDICT, STATUSDICT
 from zoneinfo import ZoneInfo
 from urllib3.exceptions import InsecureRequestWarning
 from utils import Tender, make_csv_datafile, mk_offset_param, seconds_to_hms,\
@@ -42,6 +47,8 @@ START_DATE = YESTERDAY.date().isoformat()
 
 LIMIT = 6
 DATABASE_NAME = "procurements.db"
+DUCKDB_NAME = "procurements2.db"
+
 
 logging.basicConfig(
     filename='download.log',
