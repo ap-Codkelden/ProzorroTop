@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Optional, List
 
 from config import TOKEN, CHANNEL
-from utils import BULLET, NOBR, BOX
+from utils import BULLET, NOBR, BOX, beautify_number
 
 logging.basicConfig(
     filename='bot.log',
@@ -32,22 +32,9 @@ except locale.Error:
 
 
 bot = telebot.TeleBot(TOKEN)
-first_msg = True
 already_sent = False
 current_dt = sent_dt = None
 current_dt_file = Path("./current_dt.txt")
-
-
-def beautify_number(n, suffix='грн.'):
-    if not n or n is None:
-        return ""
-    for unit in ('', 'тис.', 'млн', 'млрд', 'трлн'):
-        if abs(n) < 1000.0:
-            n = locale.format_string("%3.1f", n)
-            return f"{n} {unit} {suffix}"
-        n /= 1000.0
-    n = locale.format_string("%.1f", n)
-    return f"{n} квдрлн {suffix}"
 
 
 def send_messages(message_box: List[str]):
@@ -82,6 +69,7 @@ if current_dt_file.is_file():
 else:
     current_dt_file.write_text("1970-01-01")
 
+first_msg = True
 message_box: list[str] = []
 msg_portion = []
 for m in top_tenders:

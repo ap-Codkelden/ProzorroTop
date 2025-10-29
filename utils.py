@@ -5,7 +5,7 @@
 import csv
 import re
 import zipfile
-from collections import namedtuple
+import locale
 from typing import List, Optional, Any, Tuple
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -49,6 +49,18 @@ def mk_offset_param(date_obj: datetime) -> str:
     date_obj_offset = date_obj.astimezone(kyiv_zone)
     iso_string = date_obj_offset.isoformat()
     return iso_string
+
+
+def beautify_number(n, suffix='грн.'):
+    if not n or n is None:
+        return ""
+    for unit in ('', 'тис.', 'млн', 'млрд', 'трлн'):
+        if abs(n) < 1000.0:
+            n = locale.format_string("%3.1f", n)
+            return f"{n} {unit} {suffix}"
+        n /= 1000.0
+    n = locale.format_string("%.1f", n)
+    return f"{n} квдрлн {suffix}"
 
 
 def make_csv_datafile(data: List, filedate=None):
