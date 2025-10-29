@@ -11,6 +11,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from datetime import datetime
 from dataclasses import dataclass
+from decimal import Decimal
 
 
 BULLET = "\U0001F518"
@@ -52,13 +53,14 @@ def mk_offset_param(date_obj: datetime) -> str:
 
 
 def beautify_number(n, suffix='грн.'):
+    divider = Decimal(1000.0)
     if not n or n is None:
         return ""
     for unit in ('', 'тис.', 'млн', 'млрд', 'трлн'):
-        if abs(n) < 1000.0:
+        if abs(n) < divider:
             n = locale.format_string("%3.1f", n)
             return f"{n} {unit} {suffix}"
-        n /= 1000.0
+        n /= divider
     n = locale.format_string("%.1f", n)
     return f"{n} квдрлн {suffix}"
 
