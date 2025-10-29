@@ -5,19 +5,18 @@
 # зберігати схему, щоб виводити посилання на Clarity або ні
 # CPV
 # Rewrite as a thread
-# use duckdb?
 
 
 import logging
+import sys
 import pickle
-import sqlite3
 import duckdb
+import pyarrow as pa
+import pyarrow.parquet as pq
+from pyarrow import ArrowInvalid
 import time
-from datetime import (
-    datetime,
-    timedelta)
-from typing import Optional
-from tqdm import tqdm
+from datetime import datetime, timedelta
+from typing import Optional, Tuple, List, Any, Dict
 
 import requests
 import ujson
@@ -26,12 +25,21 @@ import urllib3
 from currency import EXCHANGE
 from classifiers import PROCDICT, STATUSDICT
 from zoneinfo import ZoneInfo
+from tqdm import tqdm
+from requests.exceptions import (
+    HTTPError,
+    RequestException)
 from urllib3.exceptions import InsecureRequestWarning
-from utils import Tender, make_csv_datafile, mk_offset_param, seconds_to_hms,\
+from utils import (
+    Tender,
+    make_csv_datafile,
+    mk_offset_param,
+    seconds_to_hms,
     text_clean
+    )
 
 urllib3.disable_warnings(InsecureRequestWarning)
-requests.models.json = ujson
+
 
 SLEEP = 0.24
 API_URL = "https://api.openprocurement.org"
@@ -49,7 +57,6 @@ LIMIT = 6
 DATABASE_NAME = "procurements.db"
 DUCKDB_NAME = "procurements2.db"
 
-
 logging.basicConfig(
     filename='download.log',
     filemode='w',
@@ -65,20 +72,51 @@ rootLogger.addHandler(consoleHandler)
 s = requests.Session()
 s.headers.update(HEADERS)
 
+tender_schema = pa.schema([
+    ("entity_id", pa.string()),
+    ("entity_name", pa.string()),
+    ("proc_type", pa.string()),
+    ("status", pa.string()),
+    ("title", pa.string()),
+    ("uaid", pa.string()),
+    ("id", pa.string()),
+    ("price", pa.float64()),
+    ("price_uah", pa.float64()),
+    ("currency", pa.string()),
+    ("vat", pa.bool_()),
+    ("date", pa.string())
+    ])
+
+proc_schema = pa.schema([
+    ("procedure", pa.string()),
+    ("procedure_name", pa.string()),
+    ])
+
+status_schema = pa.schema([
+    ("status", pa.string()),
+    ("status_name", pa.string()),
+    ])
 
 # ======================================================================
 #   Functions
 # ======================================================================
 
+def classifier_to_table(data, schema: pa.schema):
+    columns = list(zip(*data))
+    arrays = [pa.array(col, type=f.type) for col, f in zip(columns, schema)]
+    table = pa.Table.from_arrays(arrays, schema=schema)
+    return table
 
-def get_rocurement(tid_: str) -> Optional[dict]:
-    res_ = s.get(API_URL + API_PATH + f"/{tid_}")
-    if res_.status_code != 200:
-        print(res_.url)
-        print("Can't load procurement data")
+
+def get_procurement(tid_: str) -> Optional[dict]:
+    try:
+        res_ = s.get(f"{API_URL}{API_PATH}/{tid_}")
+        res_.raise_for_status()
+        res_json = res_.json()
+        return res_json.get('data')
+    except (requests.RequestException, ValueError, KeyError) as e:
+        logging.error(f"Error fetching procurement {tid_}: {e}")
         return
-    data = res_.json()['data']
-    return data
 
 
 def get_tender_date(data: dict) -> datetime:
@@ -97,22 +135,22 @@ def get_tender_date(data: dict) -> datetime:
             docs_none_list = [x is None for x in (dt_published, dt_modified)]
             if all(docs_none_list):
                 continue
-            dates_compare = (tdate_,
-                             *(datetime.fromisoformat(d).astimezone(kyiv_zone) for d in (dt_published, dt_modified)),)
+            dates_compare = (
+                tdate_,
+                *(datetime.fromisoformat(d).astimezone(kyiv_zone) for d in (dt_published, dt_modified)),)
             tdate_ = min(dates_compare)
     return tdate_
 
 
-def get_tender_info(tndr_data, currency_dict=EXCHANGE):
+def get_tender_info(tndr_data, currency_dict=EXCHANGE) -> Dict:
     try:
         result = {}
         mt = tndr_data['procurementMethodType']
         result["proc_type"] = mt
-        # Entity
+        # Entity construction
         entity = tndr_data['procuringEntity']
-        result["entity_name"] = entity["name"]
+        result["entity_name"] = text_clean(entity["name"])
         result["entity_id"] = entity["identifier"]["id"]
-
         result['id'], result['uaid'] = tid, tndr_data['tenderID']
         result['status'] = result["proc_type"] + "." + tndr_data['status']
         result["title"] = text_clean(tndr_data['title'])
@@ -136,43 +174,79 @@ def get_tender_info(tndr_data, currency_dict=EXCHANGE):
         return result
 
 
-def db_insert(cursor, data):
+def count_tenders_records(con):
+    COUNT_QRY = "SELECT COUNT(*) FROM tenders;"
+    return con.sql(COUNT_QRY).fetchone()[0]
+
+
+def duckdb_insert(data, store_parquet=False):
     try:
-        cursor.executemany(
-            "INSERT INTO tenders ('entity_id', 'entity_name', 'proc_type', "
-            "                     'status', 'title', 'uaid', 'id', 'price', "
-            "'price_uah', 'currency', 'vat', 'date') "
-            "VALUES (:entity_id, :entity_name, :proc_type, :status, :title,"
-            ":uaid, :id, :price, :price_uah, :currency, :vat, :date)", data)
+        table = pa.Table.from_pylist(data, schema=tender_schema)
+        with duckdb.connect(DUCKDB_NAME) as con:
+            pre_count = count_tenders_records(con)
+
+            con.register("tenders_data", table)
+            con.sql("INSERT OR IGNORE INTO tenders "
+                    "SELECT * FROM tenders_data;")
+            
+            post_count = count_tenders_records(con)
+            inserted = post_count - pre_count
+            con.commit()
+    except ArrowInvalid as e:
+        err_file = "errdump.txt"
+        logging.error(f"Arrow error, investigate {err_file}")
+        with open(err_file, "w", encoding="utf-8") as f:
+            f.write(str(data))
+        raise
     except Exception as e_:
         logging.exception(e_)
         inserted = 0
     else:
+        if store_parquet:
+            pq.write_table(table, "output.parquet")
         inserted = len(data)
     return inserted
 
-
 logging.info("Database creation start")
-db = sqlite3.connect(DATABASE_NAME)
-cur = db.cursor()
 
-cur.execute('CREATE TABLE IF NOT EXISTS tenders ('
-            'entity_id text, entity_name text, '
-            'proc_type text, status text, '
-            "title text, uaid text, id text, "
-            "price real, price_uah real, "
-            "currency text, vat integer, date text);")
+duckdb_create_string = """
+CREATE TABLE IF NOT EXISTS tenders (
+    entity_id VARCHAR,
+    entity_name VARCHAR,
+    proc_type VARCHAR,
+    status VARCHAR,
+    title VARCHAR,
+    uaid VARCHAR,
+    id VARCHAR,
+    price DECIMAL(12,2),
+    price_uah DECIMAL(12,2),
+    currency VARCHAR,
+    vat BOOLEAN,
+    date DATE);"""
 
-with open('procdist.sql') as f:
-    script = f.read()
-    cur.executescript(script)
+index_statements = [
+    "CREATE INDEX IF NOT EXISTS idx_tenders_date ON tenders(date);",
+    "CREATE INDEX IF NOT EXISTS idx_tenders_entity ON tenders(entity_id);",
+    "CREATE INDEX IF NOT EXISTS idx_tenders_proc ON tenders(proc_type);"
+]
 
-with open('statusdist.sql') as f:
-    script = f.read()
-    cur.executescript(script)
+with duckdb.connect(DUCKDB_NAME) as con:
+    con.sql(duckdb_create_string)
+    for idx_sql in index_statements:
+        con.sql(idx_sql)
 
-db.commit()
-logging.info("Database creation end")
+    con.register("procedure_table", classifier_to_table(
+        PROCDICT, proc_schema))
+    con.sql("CREATE OR REPLACE TABLE procdict AS " \
+            "SELECT * FROM procedure_table;")
+
+    con.register("status_table", classifier_to_table(
+        STATUSDICT, status_schema))
+    con.sql("CREATE OR REPLACE TABLE statusdict AS " \
+            "SELECT * FROM status_table;")
+    con.commit()
+
+logging.info("DuckDB Database creation end")
 
 stop_date = datetime.fromisoformat(START_DATE) + timedelta(hours=24)
 stop_date = stop_date.astimezone(kyiv_zone)
@@ -187,48 +261,62 @@ tenders_list = []
 start_time = time.time()
 logging.info("IDs harvesting has begun")
 # print(API_URL + API_PATH)
-while not stop:
-    res = s.get(API_URL + API_PATH,
-                params={"offset": offset},
-                verify=False  # cert='pem_cert.crt', # key=pem-chain.pem
-                )
 
-    if res.status_code != 200:
-        print("Cannot reach API")
-        break
-    data_ = res.json()['data']
-    tenders_list.extend(data_)
+pbar = tqdm(total=None, desc="Fetching items x 100")
+
+while not stop:
     try:
+        res = s.get(
+            API_URL + API_PATH,
+            params={"offset": offset},
+            verify=False  # cert='pem_cert.crt', # key=pem-chain.pem
+            )
+        res.raise_for_status()
+        json_data = res.json()
+        data_ = json_data['data']
+        tenders_list.extend(data_)
+
         last_date = datetime.fromisoformat(data_[-1]['dateModified'])
+
+        counter += 1
+        pbar.update(counter)
+
+        if last_date >= stop_date:
+            stop = True
+            logging.info(f'StopDate {stop_date} is reached')
+            logging.info(f"Fetched total: {len(tenders_list)}")
+        offset = json_data["next_page"]["offset"]
+        time.sleep(SLEEP)
+    except (HTTPError, RequestException) as err:
+        logging.error(f"Request error occurred: {err}")
+        raise
     except Exception as e:
         raise
-    counter += 1
-    if counter % 10 == 0:
-        logging.info(f"Fetched {counter}")
-    if last_date >= stop_date:
-        stop = True
-        # print("Stop")
-    offset = res.json()["next_page"]["offset"]
-    time.sleep(SLEEP)
+    finally:
+        pbar.close()
 
 end_time = round(time.time() - start_time, 2)
-logging.info(f"Id harvesting complete. {len(tenders_list)} items has harvest "
-             f"within {end_time} s.")
+logging.info(f"IDs harvesting complete.\n{len(tenders_list)} items "
+             f"have been harvested within {end_time} s.")
 
-k = YESTERDAY.astimezone(kyiv_zone)
+yesterday_date = YESTERDAY.astimezone(kyiv_zone)
 fresh = []
 tender_box = []
 counter = 0
-
 logging.info("Freshing has begun")
 start_time = time.time()
-for t in tenders_list:
+
+# tender_info: List[Dict]
+
+for t in tqdm(tenders_list):
     tid = t['id']
-    procurement_data = get_rocurement(tid)  # Dict
+    procurement_data = get_procurement(tid)  # Dict
+    if procurement_data is None:
+        continue
     counter += 1
     time.sleep(SLEEP)
     tdate = get_tender_date(procurement_data)
-    if tdate < k:
+    if tdate < yesterday_date:
         continue
     tdate = tdate.date().isoformat()
     p = tid, tdate
@@ -238,18 +326,18 @@ for t in tenders_list:
     tender_box.append(tender_info)
     if counter % 500 == 0:
         try:
-            ins = db_insert(cur, tender_box)
+            ins: int = duckdb_insert(tender_box)
             if ins == 0:
-                raise ValueError("No data inserted. All the data is LOST.")
+                raise ValueError("No data inserted. All data is LOST.")
         except Exception as e:
             logging.error("No data inserted. Data LOST, stopped.")
             raise
         else:
-            logging.info(f"checked / inserted {counter} / {ins}")
-            db.commit()
+            logging.info(f"checked {counter} / inserted {ins}")
             tender_box = []
-db_insert(cur, tender_box)
-db.commit()
+
+duckdb_insert(tender_box)
+
 
 total_seconds = time.time() - start_time
 hours, minutes, seconds = seconds_to_hms(total_seconds)
@@ -261,35 +349,40 @@ with open("fresh.pickle", "wb") as f:
 
 # Інформація для БОТА
 logging.info(f"Perform Database Query")
-qry_template = """SELECT tenders.*
-, procdist.procedure_name, statusdist.status_name
-from tenders
-LEFT JOIN procdist
-on tenders.proc_type = procdist.procedure
-LEFT JOIN statusdist
-on tenders.status = statusdist.status """ \
-               f'where date= "{START_DATE}"' \
-               f'order by price_uah desc;'
 
-qry_box = None
-tender_info = None
+qry_template = (
+    "SELECT tenders.*"
+    "  , procdict.procedure_name, statusdict.status_name"
+    "  from tenders"
+    "  LEFT JOIN procdict"
+    "  on tenders.proc_type = procdict.procedure"
+    "  LEFT JOIN statusdict"
+    "  on tenders.status = statusdict.status"
+    f"  where date= '{START_DATE}'"
+    "  order by price_uah desc;")
+
+qry_box: list[tuple] = []
+
 try:
-    cur.execute(qry_template)
-    qry_box = cur.fetchall()
+    with duckdb.connect(DUCKDB_NAME) as con:
+        qry_box = con.sql(qry_template).fetchall()
+
     if not qry_box:
         raise ValueError("Empty query result")
 except (ValueError, Exception) as e:
-    # logging.error("Error to fetch procurement chart's top")
+    logging.error("Error to fetch procurement chart's top")
     logging.error(e)
 else:
     logging.info(f"Database Query Done")
-    tenders_info = [r for r in map(Tender._make, qry_box[:LIMIT])]
-    with open("tenders_.pickle", "wb") as f:
-        pickle.dump(tenders_info, f)
+    tenders_info = [Tender.from_tuple(r) for r in qry_box[:LIMIT]]
+    with open("qry_res.pickle", "wb") as f:
+        pickle.dump(qry_box, f)
+    
+with open("tenders_.pickle", "wb") as f:
+    pickle.dump(tenders_info, f) # type: ignore
 
 try:
     make_csv_datafile(qry_box, filedate=START_DATE)
 except Exception as e:
     logging.error(e)
-finally:
-    db.close()
+
