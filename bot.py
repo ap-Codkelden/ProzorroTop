@@ -10,15 +10,14 @@ import telebot
 import sys
 import time
 from pathlib import Path
-from datetime import datetime
-from typing import Optional, List
+from typing import List
 
 from config import TOKEN, CHANNEL
 from utils import (
-    BULLET, NOBR, BOX, beautify_number, LIMIT,
-    Tender, START_DATE, make_csv_datafile)
+    DUCKDB_NAME, BULLET, NOBR, BOX, LIMIT,
+    Tender, START_DATE, make_csv_datafile,
+    beautify_number)
 
-DUCKDB_NAME = "procurements2.db"
 
 logging.basicConfig(
     filename='bot.log',

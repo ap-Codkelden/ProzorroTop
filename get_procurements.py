@@ -8,7 +8,6 @@
 
 
 import logging
-import sys
 import pickle
 import duckdb
 import pyarrow as pa
@@ -26,20 +25,20 @@ import urllib3
 
 from currency import EXCHANGE
 from classifiers import PROCDICT, STATUSDICT
-from zoneinfo import ZoneInfo
 from tqdm import tqdm
 from requests.exceptions import (
     HTTPError,
     RequestException)
 from urllib3.exceptions import InsecureRequestWarning
 from utils import (
-    mk_offset_param,
-    seconds_to_hms,
-    text_clean,
+    YESTERDAY,
+    DUCKDB_NAME,
+    START_DATE,
     KYIV_ZONE,
-    YESTERDAY, DUCKDB_NAME,
-    START_DATE)
-
+    text_clean,
+    seconds_to_hms,
+    mk_offset_param)
+    
 urllib3.disable_warnings(InsecureRequestWarning)
 
 
