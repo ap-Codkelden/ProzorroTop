@@ -26,6 +26,8 @@ TODAY = date.today()
 KYIV_ZONE = ZoneInfo("Europe/Kyiv")
 YESTERDAY = TODAY - timedelta(days=1)
 START_DATE = YESTERDAY.isoformat()
+DUCKDB_NAME = "procurements2.db"
+LIMIT = 6
 
 @dataclass
 class Tender:
