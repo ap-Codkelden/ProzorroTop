@@ -217,7 +217,7 @@ CREATE TABLE IF NOT EXISTS tenders (
     status VARCHAR,
     title VARCHAR,
     uaid VARCHAR,
-    id VARCHAR,
+    id VARCHAR PRIMARY KEY,
     price DECIMAL(12,2),
     price_uah DECIMAL(12,2),
     currency VARCHAR,
