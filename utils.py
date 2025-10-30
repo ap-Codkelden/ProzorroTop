@@ -35,6 +35,7 @@ class Tender:
     entity_name: Optional[str] = None
     proc_type: Optional[str] = None
     status: Optional[str] = None
+    clarif_until: Optional[str] = None
     title: Optional[str] = None
     uaid: Optional[str] = None
     id: Optional[str] = None
@@ -82,9 +83,10 @@ def make_csv_datafile(data: List, filedate: str):
     Path(backup_dir).mkdir(parents=True, exist_ok=True)
     if not data:
         return 1
-    header = ['entity_id', 'entity_name', 'proc_type', 'status', 'title',
-              'uaid', 'id', 'price', 'price_uah', 'currency', 'vat', 'date',
-              'procedure_name', 'status_name']
+    header = ['entity_id', 'entity_name', 'proc_type', 'status', 
+              'clarif_until', 'title', 'uaid', 'id', 'price',
+              'price_uah', 'currency', 'vat', 'date', 'procedure_name',
+              'status_name']
     csv_file_name = f"{filedate.replace('-', '')}_data.csv"
     zip_file_name = Path.cwd().joinpath('archive', f"{csv_file_name}.zip")
     with open(csv_file_name, "w") as f:
