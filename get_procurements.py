@@ -69,6 +69,7 @@ tender_schema = pa.schema([
     ("entity_name", pa.string()),
     ("proc_type", pa.string()),
     ("status", pa.string()),
+    ('clarif_until', pa.string()),
     ("title", pa.string()),
     ("uaid", pa.string()),
     ("id", pa.string()),
@@ -129,7 +130,9 @@ def get_tender_date(data: dict) -> datetime:
                 continue
             dates_compare = (
                 tdate_,
-                *(datetime.fromisoformat(d).astimezone(KYIV_ZONE) for d in (dt_published, dt_modified)),)
+                *(datetime.fromisoformat(d).astimezone(KYIV_ZONE) for d in (
+                        dt_published,
+                        dt_modified)),)
             tdate_ = min(dates_compare)
     return tdate_
 
@@ -143,9 +146,12 @@ def get_tender_info(tndr_data, currency_dict=EXCHANGE) -> Dict:
         entity = tndr_data['procuringEntity']
         result["entity_name"] = text_clean(entity["name"])
         result["entity_id"] = entity["identifier"]["id"]
-        result['id'], result['uaid'] = tid, tndr_data['tenderID']
+        result['id'], result['uaid'] = tndr_data['id'], tndr_data['tenderID']
         result['status'] = result["proc_type"] + "." + tndr_data['status']
         result["title"] = text_clean(tndr_data['title'])
+        if (ep := tndr_data.get('enquiryPeriod')) is not None:
+            enquiry_period = ep.get('clarificationsUntil')
+            result['clarifications_until'] = enquiry_period
         if (value_data := tndr_data.get('value')) is not None:
             result["price"] = value_data.get("amount")
             currency = value_data.get("currency")
@@ -159,7 +165,7 @@ def get_tender_info(tndr_data, currency_dict=EXCHANGE) -> Dict:
         else:
             result['vat'] = result["price"] = result['currency'] = result['price_uah'] = None
     except Exception as e1:
-        logging.error(tid)
+        logging.error(tndr_data['id'])
         logging.critical(e1)
         raise
     else:
@@ -207,6 +213,7 @@ CREATE TABLE IF NOT EXISTS tenders (
     entity_name VARCHAR,
     proc_type VARCHAR,
     status VARCHAR,
+    clarif_until VARCHAR,
     title VARCHAR,
     uaid VARCHAR,
     id VARCHAR PRIMARY KEY,
