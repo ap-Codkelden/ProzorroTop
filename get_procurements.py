@@ -15,11 +15,13 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyarrow import ArrowInvalid
 import time
-from datetime import datetime, timedelta
-from typing import Optional, Tuple, List, Any, Dict
+from datetime import (
+    datetime,
+    timedelta,
+    timezone)
+from typing import Optional, Dict
 
 import requests
-import ujson
 import urllib3
 
 from currency import EXCHANGE
@@ -31,12 +33,12 @@ from requests.exceptions import (
     RequestException)
 from urllib3.exceptions import InsecureRequestWarning
 from utils import (
-    Tender,
-    make_csv_datafile,
     mk_offset_param,
     seconds_to_hms,
-    text_clean
-    )
+    text_clean,
+    KYIV_ZONE,
+    YESTERDAY, DUCKDB_NAME,
+    START_DATE)
 
 urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -47,15 +49,6 @@ API_PATH = "/api/0/tenders"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
-TODAY = datetime.today()
-TODAY = TODAY.replace(hour=0, minute=0, second=0, microsecond=0)
-kyiv_zone = ZoneInfo("Europe/Kyiv")
-YESTERDAY = TODAY - timedelta(hours=24)
-START_DATE = YESTERDAY.date().isoformat()
-
-LIMIT = 6
-DATABASE_NAME = "procurements.db"
-DUCKDB_NAME = "procurements2.db"
 
 logging.basicConfig(
     filename='download.log',
@@ -121,14 +114,14 @@ def get_procurement(tid_: str) -> Optional[dict]:
 
 def get_tender_date(data: dict) -> datetime:
     # Let tdate_ be a date in future
-    tdate_ = datetime(year=2199, month=1, day=1).astimezone(kyiv_zone)
+    tdate_ = datetime(year=2199, month=1, day=1).astimezone()
     if (m := data.get('enquiryPeriod')) is not None:
         tdate_ = datetime.fromisoformat(m['startDate'])
     elif (m := data.get('data')) is not None:
         tdate_ = datetime.fromisoformat(m['date'])
     elif (m := data.get('tenderID')) is not None:
         tender_date_from_id = m[3:13]
-        tdate_ = datetime.fromisoformat(tender_date_from_id).astimezone(kyiv_zone)
+        tdate_ = datetime.fromisoformat(tender_date_from_id).astimezone(KYIV_ZONE)
     elif (docs := data.get("documents")) is not None:
         for doc in docs:
             dt_published, dt_modified = doc["datePublished"], doc["dateModified"]
@@ -137,7 +130,7 @@ def get_tender_date(data: dict) -> datetime:
                 continue
             dates_compare = (
                 tdate_,
-                *(datetime.fromisoformat(d).astimezone(kyiv_zone) for d in (dt_published, dt_modified)),)
+                *(datetime.fromisoformat(d).astimezone(KYIV_ZONE) for d in (dt_published, dt_modified)),)
             tdate_ = min(dates_compare)
     return tdate_
 
@@ -249,7 +242,7 @@ with duckdb.connect(DUCKDB_NAME) as con:
 logging.info("DuckDB Database creation end")
 
 stop_date = datetime.fromisoformat(START_DATE) + timedelta(hours=24)
-stop_date = stop_date.astimezone(kyiv_zone)
+stop_date = stop_date.astimezone(KYIV_ZONE)
 
 logging.info(f"Startdate is: {START_DATE}; "
              f"Stopdate is: {stop_date.date().isoformat()}")
@@ -299,14 +292,14 @@ end_time = round(time.time() - start_time, 2)
 logging.info(f"IDs harvesting complete.\n{len(tenders_list)} items "
              f"have been harvested within {end_time} s.")
 
-yesterday_date = YESTERDAY.astimezone(kyiv_zone)
+yesterday_date = datetime.combine(
+    YESTERDAY, datetime.min.time(),
+    tzinfo=timezone.utc).astimezone(KYIV_ZONE)
 fresh = []
 tender_box = []
 counter = 0
 logging.info("Freshing has begun")
 start_time = time.time()
-
-# tender_info: List[Dict]
 
 for t in tqdm(tenders_list):
     tid = t['id']
@@ -346,43 +339,3 @@ logging.info(f"Fresh complete. {len(fresh)} items has checked within {hours} hou
              f"{minutes} minutes, and {seconds} seconds.")
 with open("fresh.pickle", "wb") as f:
     pickle.dump(fresh, f)
-
-# Інформація для БОТА
-logging.info(f"Perform Database Query")
-
-qry_template = (
-    "SELECT tenders.*"
-    "  , procdict.procedure_name, statusdict.status_name"
-    "  from tenders"
-    "  LEFT JOIN procdict"
-    "  on tenders.proc_type = procdict.procedure"
-    "  LEFT JOIN statusdict"
-    "  on tenders.status = statusdict.status"
-    f"  where date= '{START_DATE}'"
-    "  order by price_uah desc;")
-
-qry_box: list[tuple] = []
-
-try:
-    with duckdb.connect(DUCKDB_NAME) as con:
-        qry_box = con.sql(qry_template).fetchall()
-
-    if not qry_box:
-        raise ValueError("Empty query result")
-except (ValueError, Exception) as e:
-    logging.error("Error to fetch procurement chart's top")
-    logging.error(e)
-else:
-    logging.info(f"Database Query Done")
-    tenders_info = [Tender.from_tuple(r) for r in qry_box[:LIMIT]]
-    with open("qry_res.pickle", "wb") as f:
-        pickle.dump(qry_box, f)
-    
-with open("tenders_.pickle", "wb") as f:
-    pickle.dump(tenders_info, f) # type: ignore
-
-try:
-    make_csv_datafile(qry_box, filedate=START_DATE)
-except Exception as e:
-    logging.error(e)
-

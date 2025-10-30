@@ -9,7 +9,11 @@ import locale
 from typing import List, Optional, Any, Tuple
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from datetime import datetime
+from datetime import (
+    date,
+    timedelta,
+    datetime,
+    timezone)
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -17,6 +21,11 @@ from decimal import Decimal
 BULLET = "\U0001F518"
 NOBR = "\U000000A0"
 BOX = "\U0001F4E6"
+
+TODAY = date.today()
+KYIV_ZONE = ZoneInfo("Europe/Kyiv")
+YESTERDAY = TODAY - timedelta(days=1)
+START_DATE = YESTERDAY.isoformat()
 
 @dataclass
 class Tender:
@@ -42,10 +51,11 @@ class Tender:
         return cls(**data)
 
 
-def mk_offset_param(date_obj: datetime) -> str:
+def mk_offset_param(date_: date) -> str:
     """
     Makes an offset parameter for the API
     """
+    date_obj = datetime.combine(date_, datetime.min.time(), tzinfo=timezone.utc)
     kyiv_zone = ZoneInfo("Europe/Kyiv")
     date_obj_offset = date_obj.astimezone(kyiv_zone)
     iso_string = date_obj_offset.isoformat()
@@ -65,7 +75,7 @@ def beautify_number(n, suffix='грн.'):
     return f"{n} квдрлн {suffix}"
 
 
-def make_csv_datafile(data: List, filedate=None):
+def make_csv_datafile(data: List, filedate: str):
     backup_dir = Path.cwd().joinpath('archive')
     Path(backup_dir).mkdir(parents=True, exist_ok=True)
     if not data:

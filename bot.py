@@ -5,6 +5,7 @@
 import locale
 import logging
 import pickle
+import duckdb
 import telebot
 import sys
 import time
@@ -13,7 +14,11 @@ from datetime import datetime
 from typing import Optional, List
 
 from config import TOKEN, CHANNEL
-from utils import BULLET, NOBR, BOX, beautify_number
+from utils import (
+    BULLET, NOBR, BOX, beautify_number, LIMIT,
+    Tender, START_DATE, make_csv_datafile)
+
+DUCKDB_NAME = "procurements2.db"
 
 logging.basicConfig(
     filename='bot.log',
@@ -51,6 +56,44 @@ def send_messages(message_box: List[str]):
         logging.info("Successfully sent")
         current_dt_file.write_text(f"{current_dt}")
 
+# Інформація для БОТА
+logging.info(f"Perform Database Query")
+
+qry_template = (
+    "SELECT tenders.*"
+    "  , procdict.procedure_name, statusdict.status_name"
+    "  from tenders"
+    "  LEFT JOIN procdict"
+    "  on tenders.proc_type = procdict.procedure"
+    "  LEFT JOIN statusdict"
+    "  on tenders.status = statusdict.status"
+    f"  where date= '{START_DATE}'"
+    "  order by price_uah desc;")
+
+qry_box: list[tuple] = []
+
+try:
+    with duckdb.connect(DUCKDB_NAME) as con:
+        qry_box = con.sql(qry_template).fetchall()
+
+    if not qry_box:
+        raise ValueError("Empty query result")
+except (ValueError, Exception) as e:
+    logging.error("Error to fetch procurement chart's top")
+    logging.error(e)
+else:
+    logging.info(f"Database Query Done")
+    tenders_info = [Tender.from_tuple(r) for r in qry_box[:LIMIT]]
+    with open("qry_res.pickle", "wb") as f:
+        pickle.dump(qry_box, f)
+    
+with open("tenders_.pickle", "wb") as f:
+    pickle.dump(tenders_info, f) # type: ignore
+
+try:
+    make_csv_datafile(qry_box, filedate=START_DATE)
+except Exception as e:
+    logging.error(e)
 
 try:
     with open("tenders_.pickle", "rb") as f:
