@@ -1,10 +1,28 @@
-BEGIN TRANSACTION;
-DROP TABLE IF EXISTS "statusdist";
-CREATE TABLE IF NOT EXISTS "statusdist" (
-	"status"	TEXT,
-	"status_name"	TEXT
-);
-INSERT INTO "statusdist" ("status","status_name") VALUES ('reporting.active','Активний тендер (за умовчанням)'),
+PROCDICT = (
+    ('aboveThreshold', 'Відкриті торги з особливостями'),
+    ('aboveThresholdUA','Відкриті торги'),
+    ('aboveThresholdEU','Відкриті торги (EU)'),
+    ('belowThreshold','Спрощена закупівля'),
+    ('negotiation','Переговорна процедура'),
+    ('negotiation.quick','Переговорна процедура (за нагальною потребою)'),
+    ('reporting','Звіт про договір'),
+    ('esco','Закупівля енергосервісу'),
+    ('competitiveDialogue','Конкурентний діалог'),
+    ('competitiveOrdering', 'Конкурентна заявка'),
+    ('competitiveDialogueUA','Конкурентний діалог (UA)'),
+    ('competitiveDialogueEU','Конкурентний діалог (EU)'),
+    ('priceQuotation','Запит ціни пропозицій'),
+    ('competitiveDialogue.stage2','Конкурентний діалог, 2 етап'),
+    ('competitiveDialogueEU.stage2','Конкурентний діалог (EU), 2 етап'),
+    ('competitiveDialogueUA.stage2','Конкурентний діалог (UA), 2 етап'),
+    ('aboveThresholdUA.defense','Закупівля для потреб оборони'),
+    ('closeFrameworkAgreementUA','Укладання рамкової угоди'), 
+    ('simple.defense', 'Спрощені торги для гарантованого забезпечення потреб безпеки і оборони'),
+    ('closeFrameworkAgreementSelectionUA','Відбір для закупівлі за рамковою угодою'),
+)
+
+STATUSDICT = (
+ ('reporting.active','Активний тендер (за умовчанням)'),
  ('reporting.complete','Завершений тендер'),
  ('reporting.cancelled','Відмінена закупівля (відмінена)'),
  ('reporting.unsuccessful','Закупівля не відбулась (не відбулась)'),
@@ -134,5 +152,5 @@ INSERT INTO "statusdist" ("status","status_name") VALUES ('reporting.active','А
  ('priceQuotation.complete','Завершена закупівля (завершена)'),
  ('priceQuotation.cancelled','Відмінена закупівля (відмінена)'),
  ('simple.defense.active.qualification','Кваліфікація переможця (кваліфікація)'),
- ('simple.defense.active.tendering','Очікування пропозицій (пропозиції)');
-COMMIT;
+ ('simple.defense.active.tendering','Очікування пропозицій (пропозиції)'),
+)

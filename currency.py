@@ -46,9 +46,8 @@ def read_exchange():
     try:
         u = get_exchange("USD", START_DATE)
         e = get_exchange("EUR", START_DATE)
-        r = get_exchange("RUB", START_DATE)
         g = get_exchange("GBP", START_DATE)
-        if any([x is None for x in (u, e, r, g)]):
+        if any([x is None for x in (u, e, g)]):
             raise ValueError
     except:
         with open("exchange.json") as f:
@@ -58,7 +57,6 @@ def read_exchange():
     else:
         k["EUR"] = e
         k["USD"] = u
-        k['RUB'] = r
         k['GBP'] = g
         with open("exchange.json", "w") as f:
             json.dump(k, f)

@@ -5,38 +5,88 @@
 import csv
 import re
 import zipfile
-from collections import namedtuple
-from typing import List
+import locale
+from typing import List, Optional, Any, Tuple
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from datetime import datetime
+from datetime import (
+    date,
+    timedelta,
+    datetime,
+    timezone)
+from dataclasses import dataclass
+from decimal import Decimal
 
 
-Tender = namedtuple(
-    'Tender', [
-        "entity_id", "entity_name", "proc_type", "status", "title", "uaid",
-        "id", "price", "price_uah", "currency", "vat", "date", "procedure_name",
-        "status_name"])
+BULLET = "\U0001F518"
+NOBR = "\U000000A0"
+BOX = "\U0001F4E6"
+
+TODAY = date.today()
+KYIV_ZONE = ZoneInfo("Europe/Kyiv")
+YESTERDAY = TODAY - timedelta(days=1)
+START_DATE = YESTERDAY.isoformat()
+DUCKDB_NAME = "procurements2.db"
+LIMIT = 6
+
+@dataclass
+class Tender:
+    entity_id: Optional[str] = None
+    entity_name: Optional[str] = None
+    proc_type: Optional[str] = None
+    status: Optional[str] = None
+    clarif_until: Optional[str] = None
+    title: Optional[str] = None
+    uaid: Optional[str] = None
+    id: Optional[str] = None
+    price: Optional[float] = None
+    price_uah: Optional[float] = None
+    currency: Optional[str] = None
+    vat: Optional[bool] = None
+    date: Optional[datetime] = None
+    procedure_name: Optional[str] = None
+    status_name: Optional[str] = None
+
+    @classmethod
+    def from_tuple(cls, row: Tuple[Any, ...]) -> "Tender":
+        fields = list(cls.__dataclass_fields__.keys())
+        data = {k: v for k, v in zip(fields, row)}
+        return cls(**data)
 
 
-def mk_offset_param(date_obj: datetime) -> str:
+def mk_offset_param(date_: date) -> str:
     """
     Makes an offset parameter for the API
     """
+    date_obj = datetime.combine(date_, datetime.min.time(), tzinfo=timezone.utc)
     kyiv_zone = ZoneInfo("Europe/Kyiv")
     date_obj_offset = date_obj.astimezone(kyiv_zone)
     iso_string = date_obj_offset.isoformat()
     return iso_string
 
 
-def make_csv_datafile(data: List, filedate=None):
+def beautify_number(n, suffix='грн.'):
+    divider = Decimal(1000.0)
+    if not n or n is None:
+        return ""
+    for unit in ('', 'тис.', 'млн', 'млрд', 'трлн'):
+        if abs(n) < divider:
+            n = locale.format_string("%3.1f", n)
+            return f"{n} {unit} {suffix}"
+        n /= divider
+    n = locale.format_string("%.1f", n)
+    return f"{n} квдрлн {suffix}"
+
+
+def make_csv_datafile(data: List, filedate: str):
     backup_dir = Path.cwd().joinpath('archive')
     Path(backup_dir).mkdir(parents=True, exist_ok=True)
     if not data:
         return 1
-    header = ['entity_id', 'entity_name', 'proc_type', 'status', 'title',
-              'uaid', 'id', 'price', 'price_uah', 'currency', 'vat', 'date',
-              'procedure_name', 'status_name']
+    header = ['entity_id', 'entity_name', 'proc_type', 'status', 
+              'clarif_until', 'title', 'uaid', 'id', 'price',
+              'price_uah', 'currency', 'vat', 'date', 'procedure_name',
+              'status_name']
     csv_file_name = f"{filedate.replace('-', '')}_data.csv"
     zip_file_name = Path.cwd().joinpath('archive', f"{csv_file_name}.zip")
     with open(csv_file_name, "w") as f:
@@ -44,8 +94,9 @@ def make_csv_datafile(data: List, filedate=None):
         writer.writerow(header)
         writer.writerows(data)
     try:
-        with zipfile.ZipFile(zip_file_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            zipf.write(csv_file_name)
+        with zipfile.ZipFile(
+            zip_file_name, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            zip_file.write(csv_file_name)
     except Exception as e:
         pass
     else:
@@ -60,12 +111,22 @@ def seconds_to_hms(seconds):
     return hours, minutes, remaining_seconds
 
 
-def text_clean(string: str, typostrofe=False) -> str:
-    # re.sub(pattern, repl, string, count=0, flags=0)
+def text_clean(string: str, typostrofe=False, translit=False,
+                   uk2en=False) -> Optional[str]:
+    en_letters = "aeiopcxBKMHTyAEIOPCX"
+    uk_letters = "аеіорсхВКМНТуАЕІОРСХ"
+    if not uk2en:
+        order = en_letters, uk_letters
+    else:
+        order = uk_letters, en_letters
+    transpose = str.maketrans(*order)
     k = string.replace('\xa0', ' ') \
         .replace('"', '”') \
         .replace('`', "'")
-    k = k.replace("'", '’')
+    if typostrofe:
+        k = k.replace("'", '’')
     k = re.sub("&nbsp;?", "", k)
     k = re.sub(r"\s+", " ", k)
+    if translit:
+        k = k.translate(transpose)
     return k.strip()
