@@ -1,5 +1,6 @@
 *.7z
 *.txt
+*.log
 __pycache__/
 *.py[codz]
 *$py.class
@@ -8,6 +9,8 @@ lib/
 lib64/
 var/
 wheels/
+.DS_Store
+exchange.json
 *.egg-info/
 *.egg
 MANIFEST
@@ -15,6 +18,7 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 .ipynb_checkpoints
+*.ipynb
 .python-version
 .env
 .envrc
