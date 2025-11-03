@@ -177,15 +177,17 @@ def count_tenders_records(con):
     return con.sql(COUNT_QRY).fetchone()[0]
 
 
-def duckdb_insert(data, store_parquet=False):
+def duckdb_insert(data, database=DUCKDB_NAME,
+                  store_parquet=False):
     try:
         table = pa.Table.from_pylist(data, schema=tender_schema)
-        with duckdb.connect(DUCKDB_NAME) as con:
+        with duckdb.connect(database=database) as con:
             pre_count = count_tenders_records(con)
 
             con.register("tenders_data", table)
-            con.sql("INSERT OR IGNORE INTO tenders "
-                    "SELECT * FROM tenders_data;")
+            con.sql("INSERT INTO tenders "
+                    "SELECT * FROM tenders_data "
+                    "ON CONFLICT (id) DO NOTHING;")
             
             post_count = count_tenders_records(con)
             inserted = post_count - pre_count
