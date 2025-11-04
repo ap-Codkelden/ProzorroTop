@@ -265,6 +265,16 @@ logging.info("IDs harvesting has begun")
 
 pbar = tqdm(total=None, desc="Fetching items x 100")
 
+"""
+while not stop:
+    ...
+        last_date = datetime.fromisoformat(data_[-1]["dateModified"])
+
+        # increment progress bar by number of new items fetched
+        pbar.update(len(data_))
+
+"""
+
 while not stop:
     try:
         res = s.get(
@@ -280,7 +290,7 @@ while not stop:
         last_date = datetime.fromisoformat(data_[-1]['dateModified'])
 
         counter += 1
-        pbar.update(counter)
+        pbar.update(len(data_))
 
         if last_date >= stop_date:
             stop = True
@@ -293,8 +303,8 @@ while not stop:
         raise
     except Exception as e:
         raise
-    finally:
-        pbar.close()
+
+pbar.close()
 
 end_time = round(time.time() - start_time, 2)
 logging.info(f"IDs harvesting complete.\n{len(tenders_list)} items "
