@@ -250,6 +250,7 @@ with duckdb.connect(DUCKDB_NAME) as con:
 logging.info("DuckDB Database creation end")
 
 stop_date = datetime.fromisoformat(START_DATE) + timedelta(hours=24)
+STOP_DATE = datetime.combine(YESTERDAY, datetime.min.time()).replace(tzinfo=KYIV_ZONE)
 stop_date = stop_date.astimezone(KYIV_ZONE)
 
 logging.info(f"Startdate is: {START_DATE}; "

@@ -49,7 +49,6 @@ RETRY_ATTEMPTS: int = 4          # per-request retries (with backoff)
 OFFSET_FILE = Path("last_offset.txt")
 DUCKDB_NAME = "procurements3.db"
 
-KYIV_ZONE = ZoneInfo("Europe/Kyiv")
 STOP_DATE = (datetime.combine(YESTERDAY - timedelta(days=1), datetime.min.time())).replace(tzinfo=KYIV_ZONE)
 
 
@@ -85,35 +84,27 @@ def load_offset() -> Optional[str]:
     return None
 
 
-async def fetch_json(
-    session: aiohttp.ClientSession,
-    url: str,
-    *,
-    attempts: int = RETRY_ATTEMPTS,
-) -> Optional[Dict[str, Any]]:
-    """
-    Fetch JSON with simple retry/backoff.
-    Returns dict on success, None on repeated failure.
-    """
+async def fetch_json(session: aiohttp.ClientSession, url: str, *, attempts: int = RETRY_ATTEMPTS) -> Optional[Dict[str, Any]]:
     backoff = 1.0
     for attempt in range(1, attempts + 1):
         try:
             async with session.get(url) as resp:
-                status = resp.status
-                if status == 200:
+                if resp.status == 200:
                     return await resp.json()
-                if status in (429, 500, 502, 503, 504):
-                    logging.warning(f"{status} for {url}; retry {attempt}/{attempts}")
-                else:
-                    text = await resp.text()
-                    logging.warning(f"Unexpected {status} for {url}: {text[:300]}")
-                    return None
+                if resp.status in (429, 500, 502, 503, 504):
+                    ra = resp.headers.get("Retry-After")
+                    sleep_s = float(ra) if ra and ra.isdigit() else backoff
+                    logging.warning(f"{resp.status} for {url}; retry {attempt}/{attempts} after {sleep_s:.1f}s")
+                    await asyncio.sleep(sleep_s)
+                    backoff = min(backoff * 2, 30.0)
+                    continue
+                text = (await resp.text())[:300]
+                logging.warning(f"Unexpected {resp.status} for {url}: {text}")
+                return None
         except Exception as e:
-            logging.warning(f"Attempt {attempt}/{attempts} failed for {url}: {e}")
-
-        await asyncio.sleep(backoff)
-        backoff *= 2
-
+            logging.warning(f"Attempt {attempt}/{attempts} failed for {url}: {e}; backoff {backoff:.1f}s")
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 30.0)
     return None
 
 
@@ -179,11 +170,10 @@ async def process_page(
         if isinstance(tid, str) and tid:
             await tid_queue.put(tid)
 
-    # 2) spin up workers
+
     results: List[Dict[str, Any]] = []
     tasks = [asyncio.create_task(worker(i, session, tid_queue, results)) for i in range(CONCURRENCY)]
 
-    # 3) close queue / wait
     for _ in range(CONCURRENCY):
         await tid_queue.put(None)
     await tid_queue.join()
@@ -218,10 +208,11 @@ async def main_async() -> None:
     offset = load_offset() or mk_offset_param(YESTERDAY)
     logging.info(f"Initial offset: {offset}")
 
+    print(offset)
     timeout = aiohttp.ClientTimeout(total=REQUEST_TOTAL_TIMEOUT)
     headers = {
         # keep a friendly UA; replicate your sync headers if you had them
-        "User-Agent": "ProzorroTop/async-fetcher (+https://github.com/yourrepo)"
+        "User-Agent": "UZ Prozorro async-fetcher"
     }
 
     batch_acc: List[Dict[str, Any]] = []
