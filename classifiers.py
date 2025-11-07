@@ -35,6 +35,8 @@ STATUSDICT = (
  ('aboveThresholdUA.defense.cancelled','Відмінена закупівля (відмінена)'),
  ('aboveThresholdUA.active.tendering','Очікування пропозицій (пропозиції)'),
  ('aboveThresholdUA.active.auction','Період аукціону (аукціон)'),
+ ('aboveThreshold.active.tendering', 'Подання пропозицій'),
+ ('aboveThresholdUA.active.tendering', 'Подання пропозицій'),
  ('aboveThresholdUA.active.qualification','Кваліфікація переможця (кваліфікація)'),
  ('aboveThresholdUA.active.awarded','Пропозиції розглянуто (розглянуто)'),
  ('aboveThresholdUA.unsuccessful','Закупівля не відбулась (не відбулась)'),
