@@ -243,14 +243,19 @@ with duckdb.connect(DUCKDB_NAME) as con:
 
     con.register("status_table", classifier_to_table(
         STATUSDICT, status_schema))
-    con.sql("CREATE OR REPLACE TABLE statusdict AS " \
+    
+    con.sql("CREATE OR REPLACE TABLE statusdict (" \
+            "status INTEGER PRIMARY KEY, status_name " \
+            "TEXT NOT NULL);")
+    con.sql("INSERT INTO statusdict " \
             "SELECT * FROM status_table;")
     con.commit()
 
 logging.info("DuckDB Database creation end")
 
 stop_date = datetime.fromisoformat(START_DATE) + timedelta(hours=24)
-STOP_DATE = datetime.combine(YESTERDAY, datetime.min.time()).replace(tzinfo=KYIV_ZONE)
+STOP_DATE = datetime.combine(
+    YESTERDAY, datetime.min.time()).replace(tzinfo=KYIV_ZONE)
 stop_date = stop_date.astimezone(KYIV_ZONE)
 
 logging.info(f"Startdate is: {START_DATE}; "
@@ -266,15 +271,6 @@ logging.info("IDs harvesting has begun")
 
 pbar = tqdm(total=None, desc="Fetching items x 100")
 
-"""
-while not stop:
-    ...
-        last_date = datetime.fromisoformat(data_[-1]["dateModified"])
-
-        # increment progress bar by number of new items fetched
-        pbar.update(len(data_))
-
-"""
 
 while not stop:
     try:
