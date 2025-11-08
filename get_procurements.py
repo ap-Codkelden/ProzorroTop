@@ -177,15 +177,17 @@ def count_tenders_records(con):
     return con.sql(COUNT_QRY).fetchone()[0]
 
 
-def duckdb_insert(data, store_parquet=False):
+def duckdb_insert(data, database=DUCKDB_NAME,
+                  store_parquet=False):
     try:
         table = pa.Table.from_pylist(data, schema=tender_schema)
-        with duckdb.connect(DUCKDB_NAME) as con:
+        with duckdb.connect(database=database) as con:
             pre_count = count_tenders_records(con)
 
             con.register("tenders_data", table)
-            con.sql("INSERT OR IGNORE INTO tenders "
-                    "SELECT * FROM tenders_data;")
+            con.sql("INSERT INTO tenders "
+                    "SELECT * FROM tenders_data "
+                    "ON CONFLICT (id) DO NOTHING;")
             
             post_count = count_tenders_records(con)
             inserted = post_count - pre_count
@@ -241,13 +243,19 @@ with duckdb.connect(DUCKDB_NAME) as con:
 
     con.register("status_table", classifier_to_table(
         STATUSDICT, status_schema))
-    con.sql("CREATE OR REPLACE TABLE statusdict AS " \
+    
+    con.sql("CREATE OR REPLACE TABLE statusdict (" \
+            "status INTEGER PRIMARY KEY, status_name " \
+            "TEXT NOT NULL);")
+    con.sql("INSERT INTO statusdict " \
             "SELECT * FROM status_table;")
     con.commit()
 
 logging.info("DuckDB Database creation end")
 
 stop_date = datetime.fromisoformat(START_DATE) + timedelta(hours=24)
+STOP_DATE = datetime.combine(
+    YESTERDAY, datetime.min.time()).replace(tzinfo=KYIV_ZONE)
 stop_date = stop_date.astimezone(KYIV_ZONE)
 
 logging.info(f"Startdate is: {START_DATE}; "
@@ -262,6 +270,7 @@ logging.info("IDs harvesting has begun")
 # print(API_URL + API_PATH)
 
 pbar = tqdm(total=None, desc="Fetching items x 100")
+
 
 while not stop:
     try:
@@ -278,7 +287,7 @@ while not stop:
         last_date = datetime.fromisoformat(data_[-1]['dateModified'])
 
         counter += 1
-        pbar.update(counter)
+        pbar.update(len(data_))
 
         if last_date >= stop_date:
             stop = True
@@ -291,8 +300,8 @@ while not stop:
         raise
     except Exception as e:
         raise
-    finally:
-        pbar.close()
+
+pbar.close()
 
 end_time = round(time.time() - start_time, 2)
 logging.info(f"IDs harvesting complete.\n{len(tenders_list)} items "
