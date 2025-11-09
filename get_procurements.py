@@ -360,7 +360,7 @@ for t in tqdm(tenders_list):
             tender_box = []
 
 duckdb_insert(tender_box)
-
+publish_database()
 
 total_seconds = time.time() - start_time
 hours, minutes, seconds = seconds_to_hms(total_seconds)
