@@ -9,6 +9,9 @@
 
 import logging
 import pickle
+from pathlib import Path
+import lzma
+from shutil import copyfileobj
 import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -170,6 +173,18 @@ def get_tender_info(tndr_data, currency_dict=EXCHANGE) -> Dict:
         raise
     else:
         return result
+
+
+def publish_database():
+    backup_dir = Path.cwd().joinpath('archive')
+    # Path(backup_dir).mkdir(parents=True, exist_ok=True)
+    xz_file_name = Path.cwd().joinpath('archive', f"procurements2.db.xz")
+    try:
+        with open("procurements2.db", "rb") as f_in, lzma.open(xz_file_name, "wb") as f_out:
+            copyfileobj(f_in, f_out)
+    except Exception as e:
+        logging.error(f"Error creating '{xz_file_name}' archive")
+    return 0
 
 
 def count_tenders_records(con):
