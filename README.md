@@ -1,5 +1,13 @@
 ## Prozorro Watchdog
 
+### Prerequisites
+
+In order to use localized date value, you have to generate appropriate 
+Ukrainian locale in your system:
+
+* `uk_UA.UTF-8` (Linux)
+* `uk-UA` (Windows)
+
 ### The flow
 
 The Moneybot's work involves two acts. The first collects the tenders'
