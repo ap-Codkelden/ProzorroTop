@@ -260,8 +260,8 @@ with duckdb.connect(DUCKDB_NAME) as con:
         STATUSDICT, status_schema))
     
     con.sql("CREATE OR REPLACE TABLE statusdict (" \
-            "status INTEGER PRIMARY KEY, status_name " \
-            "TEXT NOT NULL);")
+            "status VARCHAR PRIMARY KEY, status_name " \
+            "VARCHAR NOT NULL);")
     con.sql("INSERT INTO statusdict " \
             "SELECT * FROM status_table;")
     con.commit()
