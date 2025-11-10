@@ -306,7 +306,7 @@ while not stop:
 
         if last_date >= stop_date:
             stop = True
-            logging.info(f'StopDate {stop_date} is reached')
+            logging.info(f'\nStop Date {stop_date} is reached')
             logging.info(f"Fetched total: {len(tenders_list)}")
         offset = json_data["next_page"]["offset"]
         time.sleep(SLEEP)
