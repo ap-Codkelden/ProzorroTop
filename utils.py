@@ -21,6 +21,7 @@ from decimal import Decimal
 BULLET = "\U0001F518"
 NOBR = "\U000000A0"
 BOX = "\U0001F4E6"
+BARCHART = "\U0001F4CA"
 
 TODAY = date.today()
 KYIV_ZONE = ZoneInfo("Europe/Kyiv")
