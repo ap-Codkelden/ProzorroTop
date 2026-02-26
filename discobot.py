@@ -6,15 +6,14 @@ import locale
 import logging
 import duckdb
 import sys
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timezone
 from typing import List
 
 import discord
 
 from config import DISCORD_TOKEN, DISCORD_CHANNEL_ID
 from utils import (
-    DUCKDB_NAME, BULLET, LIMIT,
+    DUCKDB_NAME, BULLET, LIMIT, BARCHART,
     Tender, START_DATE, beautify_number
 )
 
@@ -97,6 +96,7 @@ def chunk_lines(text_lines: List[str], limit: int = 4096) -> List[str]:
 
 message_box = chunk_lines(lines)
 
+
 async def send_to_discord():
 
     intents = discord.Intents.default()
@@ -116,7 +116,7 @@ async def send_to_discord():
         for i, msg in enumerate(message_box):
 
             embed = discord.Embed(
-                title=f"📊 Топ закупівель — {report_date.strftime(LOC_DATE)}"
+                title=f"{BARCHART} Топ закупівель — {report_date.strftime(LOC_DATE)}"
                 if i == 0 else None,
                 description=msg,
                 color=0x1F8BFF
@@ -136,5 +136,40 @@ async def send_to_discord():
         await client.close()
 
 
+async def send_messages_discord(
+        token: str, 
+        channel_id: int, 
+        message_box: list[str], title: str):
+    
+    intents = discord.Intents.none()
+
+    async with discord.Client(intents=intents) as client:
+        await client.login(token)
+        await client.connect(reconnect=False)
+        await client.wait_until_ready()
+
+        channel = await client.fetch_channel(channel_id)
+
+        for i, msg in enumerate(message_box):
+            embed = discord.Embed(
+                title=title if i == 0 else None,
+                description=msg,
+                color=0x1F8BFF
+            )
+            embed.timestamp = datetime.now(timezone.utc)
+            embed.set_footer(text="Prozorro Watchdog Bot")
+
+            await channel.send(embed=embed)
+            await asyncio.sleep(0.8)
+
+
 if __name__ == "__main__":
-    asyncio.run(send_to_discord())
+    # asyncio.run(send_to_discord())
+    asyncio.run(
+    send_messages_discord(
+        DISCORD_TOKEN,
+        DISCORD_CHANNEL_ID,
+        message_box,
+        title=f"📊 Топ закупівель — {report_date.strftime(LOC_DATE)}"
+    )
+)
